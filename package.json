@@ -1,0 +1,1 @@
+{"name":"glowup-ai-v0.4","version":"0.4.0","private":true,"type":"module","scripts":{"test":"node --test tests/*.test.mjs","dev":"node dev-server.mjs"},"engines":{"node":">=20"}}

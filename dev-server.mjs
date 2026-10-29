@@ -1,0 +1,5 @@
+import http from 'node:http';import fs from 'node:fs/promises';import path from 'node:path';import {fileURLToPath} from 'node:url';import handler from './api/analyze.mjs';
+const root=path.dirname(fileURLToPath(import.meta.url));const port=Number(process.env.PORT||3000);
+http.createServer(async(req,res)=>{if(req.url==='/api/analyze'){
+ let data='';try{for await(const chunk of req){data+=chunk;if(data.length>10_000_000)throw Error('Request too large')}req.body=JSON.parse(data);res.status=n=>{res.statusCode=n;return res};res.json=obj=>{res.setHeader('Content-Type','application/json; charset=utf-8');res.end(JSON.stringify(obj))};return await handler(req,res)}catch(e){res.statusCode=400;res.end(JSON.stringify({error:e.message}))}return}
+ const file=req.url==='/'?'index.html':req.url.slice(1);if(!['index.html','app.js'].includes(file)){res.statusCode=404;res.end('Not found');return}const bytes=await fs.readFile(path.join(root,file));res.setHeader('Content-Type',file.endsWith('.js')?'text/javascript; charset=utf-8':'text/html; charset=utf-8');res.end(bytes)}).listen(port,()=>console.log(`GLOWUP v0.4 at http://localhost:${port}`));
