@@ -4,8 +4,9 @@ import { fileURLToPath } from 'node:url';
 import analyze from './api/analyze.mjs';
 import report from './api/report.mjs';
 import payment from './api/payment.mjs';
+import recover from './api/recover.mjs';
 
-const routes = { '/api/analyze': analyze, '/api/report': report, '/api/payment': payment };
+const routes = { '/api/analyze': analyze, '/api/report': report, '/api/payment': payment, '/api/recover': recover };
 export function createServer() {
  return http.createServer(async (req,res) => {
   res.status=n=>{res.statusCode=n;return res;};

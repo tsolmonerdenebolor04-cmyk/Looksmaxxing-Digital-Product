@@ -8,6 +8,7 @@ Three photos and the Mongolian questionnaire produce a Gemini report. Existing m
 - The preview contains headline, scores, score note, one observation and one roast punchline. Summary, recommendations, barber card and the plan stay server-side.
 - A random 256-bit token is issued in a seven-day HttpOnly, SameSite=Strict cookie scoped to /api (Secure on Vercel/production). Only its SHA-256 hash is stored. The UUID alone does not authorize access. The cookie is a bearer credential; keep it private.
 - GET /api/report?id=<UUID> verifies the cookie hash, report status and seven-day expiry, then queries a QPay payment for the same report with status paid, exact 6,900 MNT, an invoice ID and verified_at. The report must also be paid. Only then is the full report selected. Missing/invalid ownership or expiry returns 404; unpaid returns 402; storage errors fail closed.
+- GET /api/recover?id=<UUID> authenticates the same cookie and expiry, returns only an allowlisted preview and a payment eligibility flag, and never selects the full report. A paid recovery then uses the separately authorized /api/report endpoint.
 - Responses are not cached. The browser constructs full-report sections only after successful authorized retrieval. The demo unlock is removed.
 - POST /api/payment accepts only an owned report. It currently returns 503 explaining that QPay is unavailable; it creates no invoice and writes no payment status. Browser success flags are ignored.
 
@@ -24,7 +25,7 @@ The reports/payments/events tables already exist in project mteslmtbntnxbqzthjbj
 | GEMINI_FALLBACK_MODEL | Optional fallback model |
 | PORT | Optional local port, default 3000 |
 
-The production project's origin is https://mteslmtbntnxbqzthjbj.supabase.co. Use a **separate staging project** for local/preview testing and provision the matching existing schema there. Do not point development writes at production. Do not prefix secrets with NEXT_PUBLIC_, VITE_, or other browser-export prefixes. Never paste keys into source files or the browser. The app uses native server-side fetch for the Supabase Data API; there are no additional packages.
+The production project's origin is https://mteslmtbntnxbqzthjbj.supabase.co. The separate staging project is glowup-ai-staging, hbhreogfcisufnajijqy (ap-northeast-2), at https://hbhreogfcisufnajijqy.supabase.co. Its matching schema is already provisioned. Use staging for local/preview testing. Do not point development writes at production. Do not prefix secrets with NEXT_PUBLIC_, VITE_, or other browser-export prefixes. Never paste keys into source files or the browser. The app uses native server-side fetch for the Supabase Data API; there are no additional packages.
 
 ## Local setup and tests
 
@@ -37,9 +38,9 @@ Alternatively set the environment variables in your shell, then run npm run dev.
     npm test
     npm run build
 
-Tests use mocked Gemini and Supabase HTTP responses, including full analysis-to-storage, preview isolation, ownership, wrong tokens, payment verification, expiry, unavailable services and HTTP/static routing. Paid rows exist only in test fixtures. No live Gemini requests or production database writes are performed by tests.
+The default 25-test suite uses mocked Gemini and Supabase HTTP responses, including full analysis-to-storage, preview isolation, ownership, wrong tokens, payment verification, expiry, unavailable services and HTTP/static routing. Paid rows in this default suite exist only in mocked test fixtures. No live Gemini requests or production database writes are performed by tests.
 
-The report ID is held in the current page's memory and the cookie remains in the same browser. Reload recovery, account-based access and cross-device delivery are not implemented; do not collect payments until a recovery/delivery workflow is agreed.
+The browser stores only the opaque report ID in localStorage (glowup-report-id), preserving it across refresh and reopening the same browser. The ID grants no access without the HttpOnly cookie. Every recovery rechecks ownership and expiry server-side; paid access is rechecked by the full-report endpoint. Missing/invalid cookies and expired reports clear the saved ID. Transient service errors preserve it for retry. Restart forgets the saved ID. No report contents, access tokens or server credentials are stored in browser storage. Clearing cookies, changing browsers and cross-device recovery still require a future account/delivery design.
 
 ## Deployment instructions (review/preview only)
 
@@ -53,6 +54,8 @@ The report ID is held in the current page's memory and the cookie remains in the
 
 Preserve RLS and deny browser roles access to reports, payments and events. Never add a public read policy for previews: the server returns those. Verify grants, policies, views and RPCs on the staging copy using [Supabase API security guidance](https://supabase.com/docs/guides/api/securing-your-api). Server secrets bypass RLS, so authorization in these handlers is mandatory; see [Supabase API keys](https://supabase.com/docs/guides/getting-started/api-keys).
 
+The analysis endpoint now performs zero-row Supabase schema/read preflight checks before calling Gemini. This avoids spend during known storage outages; it cannot guarantee a later insert or replace durable quota/abuse controls.
+
 ## QPay integration boundary
 
 lib/qpay.mjs defines createInvoice and verifyInvoice contracts; both throw until a real adapter is implemented. There is no callback route, fake confirmation, test unlock or payment status writer. No QPay environment variables are read yet.
@@ -65,4 +68,4 @@ A callback is a prompt to query QPay, never proof of payment. Verify the stored 
 
 The existing in-memory analysis rate limit is per instance; shared rate limiting, quotas and spend controls are still needed before public traffic. Photos are sent to Gemini but not persisted by this app; reports contain personal observations, so publish retention/deletion and privacy policies. Seven-day expiry denies access but does not delete stored data. AI schema checks do not establish observation accuracy; validate real consented adult outputs in staging before charging. The scores remain subjective presentation heuristics.
 
-Live provider/database write integration and hosted browser verification have not been run as part of this change. Use staging for those checks, never the production project.
+See [staging verification](docs/staging-verification.md) for the opt-in real Supabase runner and exact test provenance. Hosted Vercel verification, real Gemini requests and real QPay settlement remain outstanding. Use staging for integration checks, never the production project.

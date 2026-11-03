@@ -4,6 +4,7 @@ import { randomBytes } from 'node:crypto';
 import { createHandler as analyzeHandler } from '../api/analyze.mjs';
 import { createHandler as reportHandler } from '../api/report.mjs';
 import { createHandler as paymentHandler } from '../api/payment.mjs';
+import { createHandler as recoveryHandler } from '../api/recover.mjs';
 import { createStore } from '../lib/store.mjs';
 import { saveReport } from '../lib/paywall.mjs';
 import { report } from './fixtures.mjs';
@@ -117,11 +118,43 @@ test('analysis never delivers or persists an invalid report and never delivers o
     images:['FRONT','SIDE','FULL'].map(label=>({label,mimeType:'image/jpeg',data:bytes.toString('base64')}))};
   const bad={...report,weeks:[]};let generated=bad, writes=0;
   t.mock.method(globalThis,'fetch',async()=>Response.json({candidates:[{content:{parts:[{text:JSON.stringify(generated)}]}}]}));
-  const handler=analyzeHandler(()=>({insertReport:async()=>{writes++;throw Error('database-secret-detail');}}));
+  const handler=analyzeHandler(()=>({health:async()=>{},insertReport:async()=>{writes++;throw Error('database-secret-detail');}}));
   let res=response();await handler({method:'POST',headers:{},body},res);
   assert.equal(res.code,422);assert.equal(writes,0);assert.equal(res.body.report,undefined);
   generated=report;res=response();await handler({method:'POST',headers:{},body},res);
   assert.equal(res.code,502);assert.equal(writes,1);assert.equal(res.body.report,undefined);
   assert.equal(res.headers['Set-Cookie'],undefined);
   assert.ok(!JSON.stringify(res.body).includes('database-secret-detail'));
+});
+
+test('recovery reauthenticates every request and returns only an allowlisted preview', async () => {
+  const {f,req}=await setup();
+  const handler=recoveryHandler(()=>f.store);
+  const request={...req,url:req.url.replace('/report?','/recover?')};
+  f.saved.preview.report=report;f.saved.preview.access_token_hash=f.saved.access_token_hash;
+  let res=response();await handler(request,res);
+  assert.equal(res.code,200);assert.equal(res.body.paid,false);
+  assert.deepEqual(Object.keys(res.body).sort(),['paid','preview','reportId']);
+  assert.equal(res.body.preview.report,undefined);assert.equal(res.body.preview.access_token_hash,undefined);
+  paid(f);res=response();await handler(request,res);
+  assert.equal(res.body.paid,true);assert.equal(res.body.report,undefined);
+  for(const headers of [{},{cookie:req.headers.cookie.replace(/=.+$/,'='+randomBytes(32).toString('base64url'))}]){
+    res=response();await handler({...request,headers},res);assert.equal(res.code,404);
+  }
+  for(const expires_at of ['2000-01-01T00:00:00Z','invalid',null]){
+    f.saved.expires_at=expires_at;res=response();await handler(request,res);assert.equal(res.code,404);
+    assert.equal(res.body.preview,undefined);
+  }
+  assert.ok(!f.reads.some(u=>u.searchParams.get('select')==='report'));
+});
+
+test('storage preflight failure prevents Gemini spend', async t => {
+  const original=process.env.GEMINI_API_KEY;process.env.GEMINI_API_KEY='test-only';
+  t.after(()=>{if(original===undefined)delete process.env.GEMINI_API_KEY;else process.env.GEMINI_API_KEY=original;});
+  const bytes=Buffer.alloc(120);bytes[0]=0xff;bytes[1]=0xd8;
+  const body={adult:true,consent:true,answers:{budget:70000,care:'x',hair:'y',roast:'z'},
+    images:['FRONT','SIDE','FULL'].map(label=>({label,mimeType:'image/jpeg',data:bytes.toString('base64')}))};
+  const fetchMock=t.mock.method(globalThis,'fetch',()=>{throw Error('Gemini must not be called');});
+  const res=response();await analyzeHandler(()=>({health:async()=>{throw Error('offline');}}))({method:'POST',headers:{'x-forwarded-for':'preflight-test'},body},res);
+  assert.equal(res.code,503);assert.equal(fetchMock.mock.callCount(),0);
 });

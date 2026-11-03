@@ -15,7 +15,7 @@ test('HTTP server serves only browser assets and routes all paywall endpoints', 
   for (const path of ['/.env', '/lib/store.mjs', '/tests/fixtures.mjs', '/api/report.mjs']) {
     assert.equal((await fetch(base + path)).status, 404);
   }
-  for (const [path,method] of [['/api/analyze','GET'],['/api/payment','GET'],['/api/report','POST']]) {
+  for (const [path,method] of [['/api/analyze','GET'],['/api/payment','GET'],['/api/report','POST'],['/api/recover','POST']]) {
     const res = await fetch(base + path, {method});assert.equal(res.status,405);
     assert.match(res.headers.get('cache-control'),/no-store/);
   }
