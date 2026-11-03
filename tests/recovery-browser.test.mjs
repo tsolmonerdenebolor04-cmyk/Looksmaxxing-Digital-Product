@@ -31,6 +31,9 @@ test('refresh and reopened page recover an unpaid preview without storing report
     assert.equal(calls.length,1);assert.equal(calls[0].options.credentials,'same-origin');
     assert.equal(calls[0].options.cache,'no-store');
     assert.equal(elements.get('headline').textContent,report.headline);
+    assert.equal(elements.get('summary').textContent,report.summary);
+    assert.equal(elements.get('previewObservations').children.length,3);
+    assert.equal(elements.get('previewPriority').children.length,3);
     assert.equal(elements.get('fullReport').classList.contains('hidden'),true);
     assert.equal(elements.get('sections').children.length,0);
     assert.deepEqual([...storage],[[key,id]]);

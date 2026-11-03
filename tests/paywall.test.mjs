@@ -8,6 +8,7 @@ import { createHandler as recoveryHandler } from '../api/recover.mjs';
 import { createStore } from '../lib/store.mjs';
 import { saveReport } from '../lib/paywall.mjs';
 import { report } from './fixtures.mjs';
+import { publicPreview } from '../lib/report.mjs';
 
 function response() {
   return { headers: {}, code: 200, setHeader(k,v) { this.headers[k] = v; },
@@ -52,7 +53,7 @@ test('creation stores full report and token hash; response is an explicit previe
   const { f, res, body } = await setup();
   assert.deepEqual(f.saved.report, report);
   assert.deepEqual(Object.keys(body).sort(), ['preview','reportId']);
-  assert.deepEqual(Object.keys(body.preview).sort(), ['headline','insight','potential','roast','score','scoreNote']);
+  assert.deepEqual(Object.keys(body.preview).sort(), ['headline','observations','potential','priority','roast','score','scoreNote','summary']);
   assert.equal(f.saved.status, 'unpaid');
   assert.match(f.saved.access_token_hash, /^[a-f0-9]{64}$/);
   assert.ok(!JSON.stringify(body).includes(report.barberCard));
@@ -107,6 +108,7 @@ test('analysis validates Gemini output, persists it, and returns no full report'
     images:['FRONT','SIDE','FULL'].map(label=>({label,mimeType:'image/jpeg',data:bytes.toString('base64')}))};
   const f=fixture(),res=response();await analyzeHandler(()=>f.store)({method:'POST',headers:{},body},res);
   assert.equal(res.code,200);assert.deepEqual(f.saved.report,report);assert.equal(res.body.report,undefined);
+  assert.deepEqual(res.body.preview,publicPreview(report));
   assert.deepEqual(Object.keys(res.body).sort(),['preview','reportId']);
 });
 
@@ -132,10 +134,15 @@ test('recovery reauthenticates every request and returns only an allowlisted pre
   const handler=recoveryHandler(()=>f.store);
   const request={...req,url:req.url.replace('/report?','/recover?')};
   f.saved.preview.report=report;f.saved.preview.access_token_hash=f.saved.access_token_hash;
+  f.saved.preview.priority.barberCard='NESTED_PAID_SECRET';
+  f.saved.preview.observations[0].weeks='NESTED_PAID_SECRET';
+  f.saved.preview.roast.haircuts='NESTED_PAID_SECRET';
   let res=response();await handler(request,res);
   assert.equal(res.code,200);assert.equal(res.body.paid,false);
   assert.deepEqual(Object.keys(res.body).sort(),['paid','preview','reportId']);
   assert.equal(res.body.preview.report,undefined);assert.equal(res.body.preview.access_token_hash,undefined);
+  assert.deepEqual(res.body.preview,publicPreview(report));
+  assert.ok(!JSON.stringify(res.body).includes('NESTED_PAID_SECRET'));
   paid(f);res=response();await handler(request,res);
   assert.equal(res.body.paid,true);assert.equal(res.body.report,undefined);
   for(const headers of [{},{cookie:req.headers.cookie.replace(/=.+$/,'='+randomBytes(32).toString('base64url'))}]){

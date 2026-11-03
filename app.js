@@ -32,17 +32,37 @@ async function recoverReport(){
 }
 function renderPreview(p){
  $('form').classList.add('hidden');$('result').classList.remove('hidden');
- $('sections').replaceChildren();$('summary').textContent='';
+ $('sections').replaceChildren();$('summary').textContent=p.summary;
  for(const key of ['headline','scoreNote'])$(key).textContent=p[key];
- $('score').textContent=p.score+'/100';$('potential').textContent=p.potential+'/100';
- $('previewInsight').textContent=p.insight;$('previewRoast').textContent=p.roast;
+ $('score').textContent=p.score===null?'—':p.score+'/100';
+ $('potential').textContent=p.potential===null?'—':p.potential+'/100';
+ const labels={FRONT:'Нүүрний зураг',SIDE:'Хажуугийн зураг',FULL:'Бүтэн биеийн зураг'};
+ const confidence={high:'Тод харагдсан',medium:'Дунд зэргийн итгэлтэй',low:'Тодорхой бус'};
+ const observations=$('previewObservations');observations.replaceChildren();
+ for(const x of p.observations||[]){
+  const section=make('div',undefined,'photo-observation');
+  section.append(make('h3',labels[x.photo]||x.photo||'Зургийн ажиглалт'),make('p',x.detail));
+  if(x.confidence)section.append(make('small',confidence[x.confidence.toLowerCase()]||x.confidence));
+  observations.append(section);
+ }
+ const priority=$('previewPriority');priority.replaceChildren();
+ $('priorityCard').classList[p.priority?'remove':'add']('hidden');
+ if(p.priority){
+  priority.append(make('h3',p.priority.title),make('p',p.priority.why));
+  const action=make('div',undefined,'preview-action');
+  action.append(make('b','Одоо хийх алхам'),make('p',p.priority.action));priority.append(action);
+ }
+ const roast=$('previewRoast');roast.replaceChildren();
+ $('roastCard').classList[p.roast?.joke?'remove':'add']('hidden');
+ if(p.roast?.joke){
+  roast.append(make('p','“'+p.roast.joke+'”','roast-quote'));
+  if(p.roast.evidence)roast.append(make('p',p.roast.evidence));
+  if(p.roast.fix)roast.append(make('p','Яаж засах вэ: '+p.roast.fix,'foot'));
+ }
  $('previewGate').classList.remove('hidden');$('fullReport').classList.add('hidden');
  $('paymentStatus').textContent='';window.scrollTo({top:0,behavior:'smooth'});
 }
 function render(r){$('form').classList.add('hidden');$('result').classList.remove('hidden');$('sections').replaceChildren();$('headline').textContent=r.headline;$('summary').textContent=r.summary;$('score').textContent=r.score+'/100';$('potential').textContent=r.potential+'/100';$('scoreNote').textContent=r.scoreNote;
- const insight=(r.observations||[]).find(x=>x.detail)?.detail || (r.priorities||[])[0]?.why || r.summary;
- $('previewInsight').textContent=insight;
- $('previewRoast').textContent=(r.roasts||[])[0]?.joke ? '“'+r.roasts[0].joke+'”' : 'Чамд зориулсан бодитой, хэрэгжүүлэхэд амар зөвлөгөө бэлэн.';
  $('previewGate').classList.add('hidden');
  $('fullReport').classList.remove('hidden');
  block('01 / Зургийн ажиглалт',c=>{for(const x of r.observations)item(c,x.photo+' · '+x.confidence,x.detail)});

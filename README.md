@@ -5,7 +5,7 @@ Three photos and the Mongolian questionnaire produce a Gemini report. Existing m
 ## Access flow
 
 - POST /api/analyze validates input, generates and validates the report, then stores the full JSON and an explicit preview in Supabase. It returns only {reportId, preview}. Storage failure never falls back to returning the report.
-- The preview contains headline, scores, score note, one observation and one roast punchline. Summary, recommendations, barber card and the plan stay server-side.
+- The explicit preview contains headline, scores and interpretation, the narrative summary, the first three photo-specific observations (photo/detail/confidence), ONE top priority (title/why/action), and at most one roast (joke/evidence/fix). Remaining priorities, haircuts/barber card, skincare/grooming, wardrobe, photo tips, budget and the 30-day plan stay server-side.
 - A random 256-bit token is issued in a seven-day HttpOnly, SameSite=Strict cookie scoped to /api (Secure on Vercel/production). Only its SHA-256 hash is stored. The UUID alone does not authorize access. The cookie is a bearer credential; keep it private.
 - GET /api/report?id=<UUID> verifies the cookie hash, report status and seven-day expiry, then queries a QPay payment for the same report with status paid, exact 6,900 MNT, an invoice ID and verified_at. The report must also be paid. Only then is the full report selected. Missing/invalid ownership or expiry returns 404; unpaid returns 402; storage errors fail closed.
 - GET /api/recover?id=<UUID> authenticates the same cookie and expiry, returns only an allowlisted preview and a payment eligibility flag, and never selects the full report. A paid recovery then uses the separately authorized /api/report endpoint.
@@ -38,9 +38,9 @@ Alternatively set the environment variables in your shell, then run npm run dev.
     npm test
     npm run build
 
-The default 25-test suite uses mocked Gemini and Supabase HTTP responses, including full analysis-to-storage, preview isolation, ownership, wrong tokens, payment verification, expiry, unavailable services and HTTP/static routing. Paid rows in this default suite exist only in mocked test fixtures. No live Gemini requests or production database writes are performed by tests.
+The default 29-test suite uses mocked Gemini and Supabase HTTP responses, including full analysis-to-storage, preview isolation, ownership, wrong tokens, payment verification, expiry, unavailable services and HTTP/static routing. Paid rows in this default suite exist only in mocked test fixtures. No live Gemini requests or production database writes are performed by tests.
 
-The browser stores only the opaque report ID in localStorage (glowup-report-id), preserving it across refresh and reopening the same browser. The ID grants no access without the HttpOnly cookie. Every recovery rechecks ownership and expiry server-side; paid access is rechecked by the full-report endpoint. Missing/invalid cookies and expired reports clear the saved ID. Transient service errors preserve it for retry. Restart forgets the saved ID. No report contents, access tokens or server credentials are stored in browser storage. Clearing cookies, changing browsers and cross-device recovery still require a future account/delivery design.
+The browser stores only the opaque report ID in localStorage (glowup-report-id), preserving it across refresh and reopening the same browser. The ID grants no access without the HttpOnly cookie. Creation and recovery share the same nested publicPreview() allowlist, including nested-field stripping. Older stored previews remain smaller; recovery never reads full reports to backfill them. Every recovery rechecks ownership and expiry server-side; paid access is rechecked by the full-report endpoint. Missing/invalid cookies and expired reports clear the saved ID. Transient service errors preserve it for retry. Restart forgets the saved ID. No report contents, access tokens or server credentials are stored in browser storage. Clearing cookies, changing browsers and cross-device recovery still require a future account/delivery design.
 
 ## Deployment instructions (review/preview only)
 
@@ -69,3 +69,9 @@ A callback is a prompt to query QPay, never proof of payment. Verify the stored 
 The existing in-memory analysis rate limit is per instance; shared rate limiting, quotas and spend controls are still needed before public traffic. Photos are sent to Gemini but not persisted by this app; reports contain personal observations, so publish retention/deletion and privacy policies. Seven-day expiry denies access but does not delete stored data. AI schema checks do not establish observation accuracy; validate real consented adult outputs in staging before charging. The scores remain subjective presentation heuristics.
 
 See [staging verification](docs/staging-verification.md) for the opt-in real Supabase runner and exact test provenance. Hosted Vercel verification, real Gemini requests and real QPay settlement remain outstanding. Use staging for integration checks, never the production project.
+
+## Progressive report presentation
+
+The preview reads as the beginning of the personal report: narrative and scores, three photo observations, then one actionable priority and an optional roast with fix. A decorative blurred continuation leads into remaining-section labels and the 6,900₮ CTA. Blurred lines are static decoration, never paid JSON or private text hidden by CSS. Missing legacy content is omitted rather than invented. Checkout remains unavailable until QPay is implemented.
+
+Local visual QA used representative synthetic Mongolian text at 320px and 390px mobile widths and desktop, in light/dark themes. This is layout validation, not a live AI-quality or conversion test.

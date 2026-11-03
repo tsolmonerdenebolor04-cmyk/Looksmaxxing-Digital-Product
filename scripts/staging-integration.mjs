@@ -7,6 +7,7 @@ import { createHandler as recoverHandler } from '../api/recover.mjs';
 import { createHandler as reportHandler } from '../api/report.mjs';
 import { createHandler as paymentHandler } from '../api/payment.mjs';
 import { report } from '../tests/fixtures.mjs';
+import { publicPreview } from '../lib/report.mjs';
 import { stagingConfig, stagingOrigin } from './staging-config.mjs';
 
 const config = stagingConfig(process.env);
@@ -54,6 +55,12 @@ try {
 
   let result = await invoke(recoverHandler,id,cookie);
   assert.ok(result.statusCode===200 && result.body.paid===false && result.body.report===undefined);
+  assert.deepEqual(result.body.preview,saved.preview);
+  assert.deepEqual(result.body.preview,publicPreview(rows[0].report));
+  assert.ok(result.body.preview.observations.length===3 && !!result.body.preview.priority.action);
+  for (const key of ['haircuts','barberCard','skin','grooming','wardrobe','photoTips','budget','avoidSpending','weeks','limitations','priorities','roasts']) {
+    assert.ok(!(key in result.body.preview));
+  }
   assert.ok((await invoke(reportHandler,id,cookie)).statusCode===402);
   pass('unpaid cookie-authorized recovery stays locked');
   for (const auth of [undefined,cookie.replace(/=.+$/, '='+'x'.repeat(43))]) {

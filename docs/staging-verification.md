@@ -6,11 +6,11 @@ Production and arbitrary/custom origins are rejected by the runner before creden
 
 ## Actual execution record
 
-- Default local suite: **25 tests executed and passed**. Supabase and Gemini responses are mocked for application logic. Browser refresh/reopen behavior executes the actual app.js in a simulated DOM with mocked fetch/storage; this is not a hosted browser test.
+- Default local suite: **29 tests executed and passed**. Supabase and Gemini responses are mocked for application logic. Browser refresh/reopen behavior executes the actual app.js in a simulated DOM with mocked fetch/storage; this is not a hosted browser test.
 - Local HTTP tests: executed against an ephemeral loopback server, including static-file allowlisting, API method routing and no-store headers. No hosted environment was contacted.
 - Static build and credential sentinel test: executed; public output contains only app.js and index.html and no server credential interpolation. Source/templates were scanned for credential-shaped values; both templates have empty key assignments.
 - Staging connector checks: **executed** against hbhreogfcisufnajijqy; tables/columns match, RLS is enabled for reports/payments/events, and pg_policies returned no policies for these tables. These were read-only metadata checks, not application REST integration.
-- Real staging Supabase REST integration: **not executed**. The operator approved fixture testing, but the initial runner invocation stopped before execution because the local .env.staging file was missing; no REST fixture writes occurred. Awaiting usable local key configuration.
+- Real staging Supabase REST integration: **10/10 checks executed and passed**, using real staging endpoints and synthetic fixtures, including the expanded creation/recovery preview contract. The runner completed per-run cleanup. A separate read-only connector check confirmed zero synthetic reports, zero synthetic payments and zero orphan events after the previous approved run; cleanup was independently rechecked after this iteration too. No Gemini or QPay requests were made.
 - Hosted Vercel/serverless static/API checks: **not executed**. A prior Ready preview status is not evidence that integration or access-control checks passed.
 - Real Gemini analysis and QPay settlement: **not executed**. QPay remains disabled.
 
@@ -47,11 +47,12 @@ On the approved preview, verify API routes for analyze/report/payment/recover, H
 
 | Finding | Current disposition |
 | --- | --- |
-| Live Supabase and Vercel end-to-end verification | Guarded staging runner prepared; real REST execution and hosted routing verification pending configuration; fixture tests and feature push were approved |
+| Live Supabase and Vercel end-to-end verification | Guarded staging runner prepared; real REST suite passed 10/10 with fixture cleanup; hosted routing verification remains pending Preview-only configuration |
 | Refresh/closed-tab recovery | Implemented for the same browser via opaque local ID plus HttpOnly cookie; no account/cross-device recovery |
 | QPay settlement, atomic/idempotent updates and refunds | Checkout disabled; provider contract documents requirements; real merchant integration remains a release blocker |
 | Privacy retention/deletion | Seven-day access expiry is enforced; automated deletion is not implemented or scheduled. Owner must approve report retention, payment-record retention and deletion/refund obligations before launch |
 | Gemini spend before storage availability | Zero-row schema/read preflight added before Gemini; insert failures still fail closed. Shared quotas/rate limits and durable abuse controls remain release blockers |
+| Expanded preview and continuation | Creation/recovery use one nested allowlist; only summary, first three observations, one priority and optional roast are free. Static locked continuation contains no paid data; mobile/light/dark visual checks use synthetic content |
 | Static isolation/serverless routes | Local static allowlist, build credential sentinel and HTTP route tests pass; hosted verification remains pending |
 
 No production environments/data are used by these tests. No merge or production deployment is part of this work.
