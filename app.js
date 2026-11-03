@@ -7,7 +7,13 @@ const make=(tag,content,cls)=>{const e=document.createElement(tag);if(cls)e.clas
 function block(title,render){const card=make('div',undefined,'card');card.append(make('h2',title));render(card);$('sections').append(card)}
 function paragraphs(card,arr){for(const x of arr||[])card.append(make('p',x))}
 function item(card,title,detail,action){const e=make('div',undefined,'item');e.append(make('b',title));if(detail)e.append(make('p',detail));if(action)e.append(make('small',action));card.append(e)}
-function render(r){$('form').classList.add('hidden');$('result').classList.remove('hidden');$('sections').replaceChildren();$('headline').textContent=r.headline;$('summary').textContent=r.summary;$('score').textContent=r.score+'/100';$('potential').textContent=r.potential+'/100';$('scoreNote').textContent=r.scoreNote;
+let activeReport=null;
+function render(r){activeReport=r;$('form').classList.add('hidden');$('result').classList.remove('hidden');$('sections').replaceChildren();$('headline').textContent=r.headline;$('summary').textContent=r.summary;$('score').textContent=r.score+'/100';$('potential').textContent=r.potential+'/100';$('scoreNote').textContent=r.scoreNote;
+ const insight=(r.observations||[]).find(x=>x.detail)?.detail || (r.priorities||[])[0]?.why || r.summary;
+ $('previewInsight').textContent=insight;
+ $('previewRoast').textContent=(r.roasts||[])[0]?.joke ? '“'+r.roasts[0].joke+'”' : 'Чамд зориулсан бодитой, хэрэгжүүлэхэд амар зөвлөгөө бэлэн.';
+ $('previewGate').classList.remove('hidden');
+ $('fullReport').classList.add('hidden');
  block('01 / Зургийн ажиглалт',c=>{for(const x of r.observations)item(c,x.photo+' · '+x.confidence,x.detail)});
  block('02 / Хамгийн чухал 3 өөрчлөлт',c=>{for(const x of r.priorities)item(c,x.title,x.why,x.action)});
  block('03 / Roast Report',c=>{if(!r.roasts.length)paragraphs(c,['Энэ удаа зохиомол шүүмжлэл хийхгүй.']);for(const x of r.roasts){const d=make('div',undefined,'roast');d.append(make('strong','“'+x.joke+'”'),make('p',x.evidence),make('small','Яаж засах вэ: '+x.fix));c.append(d)}});
@@ -22,3 +28,11 @@ async function compress(file){const bitmap=await createImageBitmap(file);const s
 $('form').onsubmit=async e=>{e.preventDefault();$('error').classList.add('hidden');if(state.photos.some(x=>!x)){showError('3 зургаа бүгдийг оруулна уу.');return}const btn=$('submit');btn.disabled=true;btn.textContent='Зургийг шинжилж байна… (20–60 сек)';try{const images=await Promise.all(state.photos.map(compress));const res=await fetch('/api/analyze',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({adult:$('adult').checked,consent:$('consent').checked,answers:{care:$('care').value,hair:$('hair').value,budget:Number($('budget').value),roast:$('roast').value},images:images.map((im,i)=>({...im,label:['FRONT','SIDE','FULL'][i]}))})});const body=await res.json();if(!res.ok)throw Error(body.error||'Тайлан үүсгэхэд алдаа гарлаа');render(body.report)}catch(err){showError(err.message)}finally{btn.disabled=false;btn.textContent='Миний тайланг гаргах →'}};
 function showError(msg){$('error').textContent=msg;$('error').classList.remove('hidden')}
 $('restart').onclick=()=>{$('result').classList.add('hidden');$('form').classList.remove('hidden');window.scrollTo({top:0,behavior:'smooth'})};
+
+// TEST ONLY: this button simulates a completed purchase. Remove before public launch.
+// Real paid unlocking must be verified on the server; CSS blur is not access control.
+$('demoUnlock').onclick=()=>{
+ $('previewGate').classList.add('hidden');
+ $('fullReport').classList.remove('hidden');
+ $('fullReport').scrollIntoView({behavior:'smooth',block:'start'});
+};
