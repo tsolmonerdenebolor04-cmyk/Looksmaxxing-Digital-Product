@@ -92,11 +92,20 @@ async function paymentRequest(path, options = {}) {
   if(version!==viewVersion)return;
   if(!response.ok)throw Error(body.error||'Дахин оролдоно уу.');
   if(path==='report')render(body.report);
+  if(path==='payment'){
+   const url=new URL(body.checkoutUrl);
+   if(url.origin!=='https://byl.mn'||url.username||url.password||url.search||url.hash||!/^\/h\/invoice\/[1-9][0-9]*\/[A-Za-z0-9]+$/.test(url.pathname))throw Error('Төлбөрийн холбоос буруу байна.');
+   window.location.assign(url.href);
+  }
+  if(path==='payment-status'){
+   if(body.paid)await paymentRequest('report');
+   else $('paymentStatus').textContent='Төлбөр хараахан баталгаажаагүй байна.';
+  }
  }catch(error){$('paymentStatus').textContent=error.message}
  finally{btn.disabled=false}
 }
 $('pay').onclick=()=>paymentRequest('payment',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({reportId})});
-$('checkPayment').onclick=()=>paymentRequest('report');
+$('checkPayment').onclick=()=>paymentRequest('payment-status',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({reportId})});
 
 // Recovery stores only the opaque ID; the server cookie remains mandatory.
 const recoveryReady=recoverReport();

@@ -5,8 +5,11 @@ import analyze from './api/analyze.mjs';
 import report from './api/report.mjs';
 import payment from './api/payment.mjs';
 import recover from './api/recover.mjs';
+import paymentStatus from './api/payment-status.mjs';
+import bylWebhook from './api/byl-webhook.mjs';
 
-const routes = { '/api/analyze': analyze, '/api/report': report, '/api/payment': payment, '/api/recover': recover };
+const routes = { '/api/analyze': analyze, '/api/report': report, '/api/payment': payment, '/api/recover': recover,
+ '/api/payment-status':paymentStatus, '/api/byl-webhook':bylWebhook };
 export function createServer() {
  return http.createServer(async (req,res) => {
   res.status=n=>{res.statusCode=n;return res;};
@@ -17,9 +20,12 @@ export function createServer() {
   if(handler){
    try {
     if(req.method==='POST'){
-     let data='';
-     for await(const chunk of req){data+=chunk;if(data.length>10_000_000)return res.status(413).json({error:'Request too large'});}
-     req.body=JSON.parse(data||'{}');
+     const chunks=[];let size=0;
+     const limit=pathname==='/api/byl-webhook'?65536:10_000_000;
+     for await(const chunk of req){size+=chunk.length;if(size>limit)return res.status(413).json({error:'Request too large'});chunks.push(chunk);}
+     const data=Buffer.concat(chunks);
+     if(pathname==='/api/byl-webhook')req.rawBody=data;
+     else req.body=JSON.parse(data.toString('utf8')||'{}');
     }
     return await handler(req,res);
    }catch{return res.status(400).json({error:'Invalid request'});}

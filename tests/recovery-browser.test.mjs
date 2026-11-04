@@ -18,8 +18,8 @@ async function browser(storage,fetcher){
   const context=vm.createContext({
     document:{body:node(),getElementById(name){if(!elements.has(name))elements.set(name,node());return elements.get(name)},querySelectorAll:()=>[],createElement:node},
     localStorage:{getItem:k=>storage.get(k)||null,setItem:(k,v)=>storage.set(k,v),removeItem:k=>storage.delete(k)},
-    window:{scrollTo(){}},fetch:async(url,options)=>{calls.push({url,options});return fetcher(url,options)},
-    navigator:{},console
+    window:{scrollTo(){},location:{assign(url){calls.push({redirect:url});}}},fetch:async(url,options)=>{calls.push({url,options});return fetcher(url,options)},
+    navigator:{},console,URL
   });
   vm.runInContext(source,context);await vm.runInContext('recoveryReady',context);
   return {elements,calls,context};
@@ -73,4 +73,23 @@ test('a newly created report remembers only its ID for the next refresh; restart
   await elements.get('form').onsubmit({preventDefault(){}});
   assert.deepEqual([...storage],[[key,id]]);
   elements.get('restart').onclick();assert.equal(storage.has(key),false);
+});
+
+test('checkout redirects only to a validated Byl hosted invoice and never reveals the report',async()=>{
+ for(const checkoutUrl of ['https://byl.mn/h/invoice/71/MockSecret','https://evil.example/checkout','javascript:alert(1)']){
+  const {elements,calls}=await browser(new Map([[key,id]]),async url=>Response.json(url.startsWith('/api/recover')?
+   {reportId:id,preview:publicPreview(report),paid:false}:{checkoutUrl}));
+  await elements.get('pay').onclick();
+  assert.equal(calls.filter(x=>x.redirect).length,checkoutUrl.startsWith('https://byl.mn/')?1:0);
+  assert.equal(elements.get('fullReport').classList.contains('hidden'),true);
+ }
+});
+
+test('check-payment verifies server-side before separately requesting the authorized report',async()=>{
+ const {elements,calls}=await browser(new Map([[key,id]]),async url=>Response.json(url.startsWith('/api/recover')?
+  {reportId:id,preview:publicPreview(report),paid:false}:url==='/api/payment-status'?{paid:true}:{report}));
+ await elements.get('checkPayment').onclick();
+ assert.equal(calls[1].url,'/api/payment-status');assert.equal(calls[1].options.method,'POST');
+ assert.equal(JSON.parse(calls[1].options.body).reportId,id);
+ assert.ok(calls[2].url.startsWith('/api/report?id='));assert.equal(elements.get('fullReport').classList.contains('hidden'),false);
 });

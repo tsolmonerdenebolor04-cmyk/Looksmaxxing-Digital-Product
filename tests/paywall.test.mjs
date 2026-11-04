@@ -29,6 +29,7 @@ function fixture() {
     const filtered = rows.filter(row => [...q].every(([k,v]) => {
       if (k === 'select' || k === 'limit') return true;
       if (v === 'not.is.null') return row[k] != null;
+      if (v.startsWith('in.(')) return v.slice(4,-1).split(',').includes(row[k]);
       if (v.startsWith('gt.')) return Date.parse(row[k]) > Date.parse(v.slice(3));
       return String(row[k]) === v.slice(3);
     })).map(row => Object.fromEntries(q.get('select').split(',').map(k => [k,row[k]])));

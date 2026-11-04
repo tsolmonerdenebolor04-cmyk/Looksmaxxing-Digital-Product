@@ -7,12 +7,12 @@ Three photos and the Mongolian questionnaire produce a Gemini report. Existing m
 - POST /api/analyze validates input, generates and validates the report, then stores the full JSON and an explicit preview in Supabase. It returns only {reportId, preview}. Storage failure never falls back to returning the report.
 - The explicit preview contains headline, scores and interpretation, the narrative summary, the first three photo-specific observations (photo/detail/confidence), ONE top priority (title/why/action), and at most one roast (joke/evidence/fix). Remaining priorities, haircuts/barber card, skincare/grooming, wardrobe, photo tips, budget and the 30-day plan stay server-side.
 - A random 256-bit token is issued in a seven-day HttpOnly, SameSite=Strict cookie scoped to /api (Secure on Vercel/production). Only its SHA-256 hash is stored. The UUID alone does not authorize access. The cookie is a bearer credential; keep it private.
-- GET /api/report?id=<UUID> verifies the cookie hash, report status and seven-day expiry, then queries a QPay payment for the same report with status paid, exact 6,900 MNT, an invoice ID and verified_at. The report must also be paid. Only then is the full report selected. Missing/invalid ownership or expiry returns 404; unpaid returns 402; storage errors fail closed.
+- GET /api/report?id=<UUID> verifies the cookie hash, report status and seven-day expiry, then queries a QPay or Byl payment for the same report with status paid, exact 6,900 MNT, an invoice ID and verified_at. The report must also be paid. Only then is the full report selected. Missing/invalid ownership or expiry returns 404; unpaid returns 402; storage errors fail closed.
 - GET /api/recover?id=<UUID> authenticates the same cookie and expiry, returns only an allowlisted preview and a payment eligibility flag, and never selects the full report. A paid recovery then uses the separately authorized /api/report endpoint.
 - Responses are not cached. The browser constructs full-report sections only after successful authorized retrieval. The demo unlock is removed.
-- POST /api/payment accepts only an owned report. It currently returns 503 explaining that QPay is unavailable; it creates no invoice and writes no payment status. Browser success flags are ignored.
+- POST /api/payment implements owner-authorized Byl invoice creation through an injected adapter. Default runtime activation remains disabled (503). POST /api/payment-status independently verifies stored invoices; POST /api/byl-webhook authenticates raw-body signatures and verifies invoices server-side. See [Byl integration and test results](docs/byl-integration.md).
 
-The reports/payments/events tables already exist in project mteslmtbntnxbqzthjbj. Read-only inspection found RLS enabled and no policies on these tables. No production rows, schema, secrets or deployment settings were changed. No migration is necessary for this implementation. Events are not written.
+The reports/payments/events tables already exist in project mteslmtbntnxbqzthjbj. Read-only inspection found RLS enabled and no policies on these tables. No production rows, schema, secrets or deployment settings were changed. The Byl order/event SQL is an unapplied review draft in docs/sql/byl-payments.sql; no remote schema or rows were changed in this iteration.
 
 ## Required server environment
 
@@ -38,7 +38,7 @@ Alternatively set the environment variables in your shell, then run npm run dev.
     npm test
     npm run build
 
-The default 29-test suite uses mocked Gemini and Supabase HTTP responses, including full analysis-to-storage, preview isolation, ownership, wrong tokens, payment verification, expiry, unavailable services and HTTP/static routing. Paid rows in this default suite exist only in mocked test fixtures. No live Gemini requests or production database writes are performed by tests.
+The default 43-test suite uses mocked Gemini and Supabase HTTP responses, including full analysis-to-storage, preview isolation, ownership, wrong tokens, payment verification, expiry, unavailable services and HTTP/static routing. Paid rows in this default suite exist only in mocked test fixtures. No live Gemini requests or production database writes are performed by tests.
 
 The browser stores only the opaque report ID in localStorage (glowup-report-id), preserving it across refresh and reopening the same browser. The ID grants no access without the HttpOnly cookie. Creation and recovery share the same nested publicPreview() allowlist, including nested-field stripping. Older stored previews remain smaller; recovery never reads full reports to backfill them. Every recovery rechecks ownership and expiry server-side; paid access is rechecked by the full-report endpoint. Missing/invalid cookies and expired reports clear the saved ID. Transient service errors preserve it for retry. Restart forgets the saved ID. No report contents, access tokens or server credentials are stored in browser storage. Clearing cookies, changing browsers and cross-device recovery still require a future account/delivery design.
 
@@ -56,13 +56,9 @@ Preserve RLS and deny browser roles access to reports, payments and events. Neve
 
 The analysis endpoint now performs zero-row Supabase schema/read preflight checks before calling Gemini. This avoids spend during known storage outages; it cannot guarantee a later insert or replace durable quota/abuse controls.
 
-## QPay integration boundary
+## Byl integration boundary
 
-lib/qpay.mjs defines createInvoice and verifyInvoice contracts; both throw until a real adapter is implemented. There is no callback route, fake confirmation, test unlock or payment status writer. No QPay environment variables are read yet.
-
-Before enabling checkout, implement against the merchant's official QPay contract with staging credentials. Add server-only QPAY_BASE_URL, QPAY_USERNAME, QPAY_PASSWORD, QPAY_INVOICE_CODE and a canonical callback origin only when that adapter actually consumes them. Never let request data select provider URLs or merchant details.
-
-A callback is a prompt to query QPay, never proof of payment. Verify the stored invoice-to-report binding, merchant account, final settlement, currency MNT, exact amount and unique provider payment ID. Add transactional/idempotent persistence of payments.status/verified_at and reports.status/paid_at, authenticated callback handling, concurrent invoice/replay tests, and refund revocation. Do not add a public endpoint that marks a report paid. Until this work passes review, checkout stays unavailable.
+The Byl invoice, hosted checkout, server verification and idempotent webhook implementation is tested with mocked provider responses. All default runtime handlers remain disabled; no live transport or environment switch exists. See [Byl implementation, activation gate and verification](docs/byl-integration.md). lib/qpay.mjs remains an unused legacy contract stub.
 
 ## Remaining launch considerations
 
@@ -72,6 +68,6 @@ See [staging verification](docs/staging-verification.md) for the opt-in real Sup
 
 ## Progressive report presentation
 
-The preview reads as the beginning of the personal report: narrative and scores, three photo observations, then one actionable priority and an optional roast with fix. A decorative blurred continuation leads into remaining-section labels and the 6,900₮ CTA. Blurred lines are static decoration, never paid JSON or private text hidden by CSS. Missing legacy content is omitted rather than invented. Checkout remains unavailable until QPay is implemented.
+The preview reads as the beginning of the personal report: narrative and scores, three photo observations, then one actionable priority and an optional roast with fix. A decorative blurred continuation leads into remaining-section labels and the 6,900₮ CTA. Blurred lines are static decoration, never paid JSON or private text hidden by CSS. Missing legacy content is omitted rather than invented. Checkout remains disabled until the Byl activation work is explicitly approved.
 
 Local visual QA used representative synthetic Mongolian text at 320px and 390px mobile widths and desktop, in light/dark themes. This is layout validation, not a live AI-quality or conversion test.
