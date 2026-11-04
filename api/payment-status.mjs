@@ -14,6 +14,10 @@ export function createHandler(getStore = createStore, getProvider = disabledByl)
       const provider = getProvider();
       const order = await store.findBylOrder(row.id);
       if (!order?.provider_invoice_id) return res.status(200).json({paid:false});
+      if (await store.claimBylVerification(row.id) !== true) {
+        res.setHeader('Retry-After','10');
+        return res.status(429).json({error:'Түр хүлээгээд дахин шалгана уу.'});
+      }
       const paid = await verifyAndSettle(store,provider,order);
       return res.status(200).json({paid:paid === true});
     } catch { return res.status(503).json({error:'Төлбөр шалгах боломжгүй байна.'}); }

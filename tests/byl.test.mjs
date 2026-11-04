@@ -26,6 +26,7 @@ async function fixture() {
     },
     async bindByl(id,invoice,project,url){order={...order,provider_invoice_id:invoice,checkout_url:url,status:'open'};return {...order};},
     async findBylOrder(id){return order?.report_id===id?{...order}:null;},
+    async claimBylVerification(){return true;},
     async findBylInvoice(id,project){return order?.provider_invoice_id===id&&order.project_id===project?{...order}:null;},
     async settleByl(v){
       assert.equal(v.amount,6900);assert.equal(v.invoiceId,order.provider_invoice_id);assert.equal(v.projectId,order.project_id);
@@ -40,7 +41,7 @@ async function fixture() {
   };
   const res=response(), saved=await saveReport(store,report,res,{});
   const req={method:'POST',headers:{cookie:res.headers['Set-Cookie'].split(';')[0]},body:{reportId:saved.reportId}};
-  let invoice={id:71,project_id:1,amount:6900,status:'open',description:referenceFor(saved.reportId),url:'https://byl.mn/h/invoice/71/MockSecret'};
+  let invoice={id:71,project_id:1,amount:6900,status:'open',description:referenceFor(saved.reportId),client_reference_id:referenceFor(saved.reportId),url:'https://byl.mn/h/invoice/71/MockSecret'};
   let failure=false;
   const provider=createByl({projectId:1,signingSecret:secret,transport:async call=>{
     calls.push(call);if(failure)throw Error('private-upstream-secret');return {data:{...invoice}};
@@ -65,7 +66,7 @@ test('default Byl handlers fail closed without an injected provider',async()=>{
 test('invoice creation fixes price and reference server-side; concurrent clicks reuse one hosted invoice',async()=>{
   const f=await fixture();f.req.body={...f.req.body,amount:1,project_id:999,status:'paid',url:'https://evil.example'};
   const results=await Promise.all(Array.from({length:12},()=>f.invoke(f.create)));
-  assert.equal(f.calls.length,1);assert.deepEqual(f.calls[0].body,{amount:6900,description:referenceFor(f.row.id),auto_advance:true});
+  assert.equal(f.calls.length,1);assert.deepEqual(f.calls[0].body,{amount:6900,description:referenceFor(f.row.id),client_reference_id:referenceFor(f.row.id),auto_advance:true});
   assert.ok(results.some(r=>r.code===200));
   const r=await f.invoke(f.create);assert.equal(r.body.checkoutUrl,f.invoice.url);
   assert.equal(f.row.status,'unpaid');assert.deepEqual(Object.keys(r.body),['checkoutUrl']);
@@ -96,7 +97,7 @@ test('retrieved paid invoice unlocks report only for its owner; client success n
   assert.equal(f.calls.at(-1).method,'GET');
 });
 test('wrong amount, project, reference, invoice, currency or malformed provider response never unlocks',async()=>{
-  for(const change of [{amount:1},{project_id:2},{description:'other-report'},{id:72},{currency:'USD'},{status:'pending'},{url:'https://evil.example'}]){
+  for(const change of [{amount:1},{project_id:2},{description:'other-report'},{client_reference_id:'other-report'},{client_reference_id:undefined},{id:72},{currency:'USD'},{status:'pending'},{url:'https://evil.example'}]){
     const f=await fixture();await f.invoke(f.create);f.invoice={...f.invoice,status:'paid',...change};
     assert.equal((await f.invoke(f.check)).code,503);assert.equal(f.row.status,'unpaid');
   }
@@ -146,4 +147,11 @@ test('store adapter uses server-only RPCs and binds lookups to project and invoi
   assert.equal(calls[0].url.pathname,'/rest/v1/rpc/reserve_byl_invoice');
   assert.deepEqual(JSON.parse(calls[2].options.body),{p_report:'r',p_invoice:'71',p_project:1,p_status:'paid',p_amount:6900,p_event:'3'});
   assert.equal(calls[3].url.searchParams.get('project_id'),'eq.1');assert.equal(calls[3].url.searchParams.get('provider_invoice_id'),'eq.71');
+});
+
+test('malformed truthy verification RPC results fail closed',async()=>{
+  for(const value of ['true',{paid:true},[true],null,false]){
+    const store=createStore({SUPABASE_URL:'https://test.supabase.co',SUPABASE_SECRET_KEY:'sb_secret_fixture'},async()=>Response.json(value));
+    assert.equal(await store.hasVerifiedPayment('fixture'),false);
+  }
 });

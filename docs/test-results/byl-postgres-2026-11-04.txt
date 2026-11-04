@@ -1,0 +1,34 @@
+PostgreSQL 17.11 on x86_64-windows, compiled by msvc-19.44.35228, 64-bit
+PostgREST 16.5
+✔ migration commits tables, security-invoker RPCs, fixed search paths and service-only privileges (772.6009ms)
+✔ a late migration failure rolls back all Byl tables and functions in a separate disposable database (365.4297ms)
+✔ PostgREST RPC JSON objects, booleans and null/report scalars match the real store contract (30.011ms)
+✔ sequential reservations preserve the original order and return created=false (5.007ms)
+✔ 20 separate concurrent PostgREST transactions reserve exactly one invoice attempt (154.5819ms)
+✔ 12 concurrent checkout handlers use one mocked creation response with real reservation locking (18.9625ms)
+✔ concurrent invoice bindings cannot reuse one project/invoice across reports (15.9926ms)
+✔ wrong owner, expired report, project and NULL binding arguments fail without changing state (15.2807ms)
+✔ 20 duplicate webhook RPCs produce one event and one verified payment (79.4742ms)
+✔ event replay against another invoice rolls back its order, ledger and report (19.4805ms)
+✔ signed duplicate webhook handlers verify mocked Byl but persist through actual PostgreSQL (19.008ms)
+✔ actual paid report authorization requires owner and expiry; void revokes access (25.6004ms)
+✔ concurrent paid/void transactions and delayed paid confirmations cannot restore void access (12.2217ms)
+✔ legacy QPay and unrelated paid Byl rows cannot bypass a revoked Byl order (16.5085ms)
+✔ ledger mismatches and post-preflight revocation cannot leak full JSON (15.8555ms)
+✔ injected ledger write failure rolls back event/order/report and allows the same event to recover (12.2073ms)
+✔ explicit transaction rollback leaves no event or payment and does not consume reservation (11.0553ms)
+✔ failed revocation after ledger update rolls back every write and the same event can be retried (15.2468ms)
+✔ conflicting payment primary key is rejected and transaction changes roll back (18.9538ms)
+✔ browser roles cannot read or mutate payment tables, invoke RPCs or bypass enabled RLS (44.9342ms)
+✔ 20 polling claims across database sessions permit one provider verification per cooldown (23.4721ms)
+✔ ambiguous POST recovery retrieves by reference and binds the existing invoice without another POST (16.0058ms)
+✔ failed reconciliation never frees the reservation or retries creation (6.45ms)
+ℹ tests 23
+ℹ suites 0
+ℹ pass 23
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1824.3696
+Local-only cluster stopped; diagnostic directory: C:\Users\MYTECH~1\AppData\Local\Temp\glowup-byl-pg-lj92zS

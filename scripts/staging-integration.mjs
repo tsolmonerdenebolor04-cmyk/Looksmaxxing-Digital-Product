@@ -1,4 +1,5 @@
-// Opt-in, synthetic staging fixtures only. This is NOT a QPay settlement test.
+// Opt-in, synthetic staging fixtures only. This is NOT a Byl/QPay settlement test.
+// Requires a separately approved Byl schema migration; never applies schema itself.
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { createStore } from '../lib/store.mjs';
@@ -13,11 +14,11 @@ import { stagingConfig, stagingOrigin } from './staging-config.mjs';
 const config = stagingConfig(process.env);
 const reportIds = [];
 const checks = [];
-const paymentId = randomUUID();
+const syntheticInvoice = String(Date.now());
 function pass(name) { checks.push(name); console.log(`PASS ${name}`); }
 async function guardedFetch(url, options = {}) {
   const target = new URL(url);
-  assert.ok(target.origin === stagingOrigin && /^\/rest\/v1\/(reports|payments|events)$/.test(target.pathname), 'Disallowed integration target');
+  assert.ok(target.origin === stagingOrigin && /^\/rest\/v1\/(reports|payments|events|byl_orders|byl_events|rpc\/(reserve_byl_invoice|bind_byl_invoice|settle_byl_invoice|has_verified_byl_payment|read_byl_report))$/.test(target.pathname), 'Disallowed integration target');
   return fetch(target, { ...options, redirect: 'error', signal: AbortSignal.timeout(10000) });
 }
 async function rest(table, query, method = 'GET', body, key = config.SUPABASE_SECRET_KEY) {
@@ -44,7 +45,11 @@ async function invoke(factory, id, cookie, method = 'GET', body) {
   return res;
 }
 try {
-  await store.health();pass('real Supabase connectivity/schema read preflight');
+  await store.health();
+  await rest('byl_orders',{select:'report_id',limit:'0'});
+  await rest('byl_events',{select:'event_id',limit:'0'});
+  assert.equal(await store.hasVerifiedPayment(randomUUID()),false);
+  pass('real Supabase and approved Byl schema read preflight');
   const res = response();
   const saved = await saveReport(ownedStore, { ...report, headline:'SYNTHETIC STAGING INTEGRATION — NO CUSTOMER DATA' }, res, {NODE_ENV:'production'});
   const id = saved.reportId, cookie = res.headers['Set-Cookie'].split(';')[0];
@@ -88,14 +93,16 @@ try {
   // Deliberately synthetic authorization fixture; never a real provider confirmation.
   await rest('reports',{id:`eq.${id}`},'PATCH',{status:'paid',paid_at:new Date().toISOString()});
   assert.ok((await invoke(reportHandler,id,cookie)).statusCode===402);
-  await rest('payments',{},'POST',{id:paymentId,report_id:id,provider:'qpay',provider_invoice_id:`synthetic-integration-${paymentId}`,
-    amount_mnt:6900,status:'paid',verified_at:new Date().toISOString(),raw_provider_response:{synthetic_staging_fixture:true}});
+  await rest('reports',{id:`eq.${id}`},'PATCH',{status:'unpaid',paid_at:null});
+  await store.reserveByl(id,rows[0].access_token_hash,1);
+  await store.bindByl(id,syntheticInvoice,1,`https://byl.mn/h/invoice/${syntheticInvoice}/SyntheticFixture`);
+  await store.settleByl({reportId:id,invoiceId:syntheticInvoice,projectId:1,amount:6900,status:'paid',eventId:'synthetic-'+id});
   result = await invoke(recoverHandler,id,cookie);
   assert.ok(result.body.paid===true && result.body.report===undefined);
   result = await invoke(reportHandler,id,cookie);
   assert.ok(result.statusCode===200 && result.body.report.barberCard===report.barberCard);
   pass('synthetic paid authorization fixture permits owner retrieval only');
-  await rest('payments',{id:`eq.${paymentId}`},'PATCH',{status:'refunded'});
+  await store.settleByl({reportId:id,invoiceId:syntheticInvoice,projectId:1,amount:6900,status:'void',eventId:'synthetic-void-'+id});
   assert.ok((await invoke(reportHandler,id,cookie)).statusCode===402);
   pass('refunded fixture revokes paid retrieval');
   await rest('reports',{id:`eq.${id}`},'PATCH',{expires_at:'2000-01-01T00:00:00Z'});
@@ -108,6 +115,8 @@ try {
   for (const id of reportIds) {
     try {
       await rest('events',{report_id:`eq.${id}`},'DELETE');
+      await rest('byl_events',{report_id:`eq.${id}`},'DELETE');
+      await rest('byl_orders',{report_id:`eq.${id}`},'DELETE');
       await rest('payments',{report_id:`eq.${id}`},'DELETE');
       await rest('reports',{id:`eq.${id}`},'DELETE');
     } catch { failedCleanup.push(id); }
@@ -115,4 +124,4 @@ try {
   if (failedCleanup.length) throw new Error(`Manual staging fixture cleanup required for report IDs: ${failedCleanup.join(', ')}`);
   if (reportIds.length) pass('per-run fixture cleanup');
 }
-console.log(`Staging integration complete: ${checks.length} checks. No Gemini or QPay requests.`);
+console.log(`Staging integration complete: ${checks.length} checks. No Gemini, Byl or QPay requests.`);

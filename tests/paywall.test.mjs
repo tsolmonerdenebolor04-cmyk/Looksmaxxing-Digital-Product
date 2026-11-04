@@ -17,6 +17,7 @@ function response() {
 function fixture() {
   let saved;
   let payments = [];
+  let order;
   const reads = [];
   // Exercise the REST adapter and authorization filters without production writes.
   const store = createStore({ SUPABASE_URL: 'https://test.supabase.co', SUPABASE_SECRET_KEY: 'sb_secret_test' }, async (url, options) => {
@@ -24,6 +25,15 @@ function fixture() {
     assert.equal(options.headers.Authorization, undefined);
     const u = new URL(url), q = u.searchParams;
     reads.push(u);
+    if (u.pathname.includes('/rpc/')) {
+      const args=JSON.parse(options.body);
+      const verified=!!order&&order.status==='paid'&&payments.some(p=>p.id===order.payment_id&&p.report_id===args.p_report&&
+        p.provider==='byl'&&p.provider_invoice_id===order.provider_invoice_id&&p.amount_mnt===6900&&p.status==='paid'&&p.verified_at);
+      if (u.pathname.endsWith('/has_verified_byl_payment'))return Response.json(verified);
+      if (u.pathname.endsWith('/read_byl_report'))return Response.json(verified&&saved.id===args.p_report&&saved.access_token_hash===args.p_hash&&
+        saved.status==='paid'&&Date.parse(saved.expires_at)>Date.now()?saved.report:null);
+      throw Error('Unexpected RPC');
+    }
     if (options.method === 'POST') { saved = JSON.parse(options.body); return new Response(null, { status: 201 }); }
     const rows = u.pathname.endsWith('/payments') ? payments : saved ? [saved] : [];
     const filtered = rows.filter(row => [...q].every(([k,v]) => {
@@ -35,7 +45,7 @@ function fixture() {
     })).map(row => Object.fromEntries(q.get('select').split(',').map(k => [k,row[k]])));
     return Response.json(filtered);
   });
-  return { store, reads, get saved() { return saved; }, set payments(v) { payments = v; } };
+  return { store, reads, get saved() { return saved; }, set payments(v) { payments = v; },set order(v){order=v;} };
 }
 async function setup() {
   const f = fixture(), res = response();
@@ -46,7 +56,8 @@ async function setup() {
 }
 function paid(f) {
   f.saved.status = 'paid';
-  f.payments = [{ id:'payment',report_id:f.saved.id,provider:'qpay',status:'paid',amount_mnt:6900,
+  f.order={payment_id:'payment',provider_invoice_id:'provider-invoice',status:'paid'};
+  f.payments = [{ id:'payment',report_id:f.saved.id,provider:'byl',status:'paid',amount_mnt:6900,
     verified_at:new Date().toISOString(),provider_invoice_id:'provider-invoice' }];
 }
 
@@ -76,7 +87,7 @@ test('unpaid, paid flag alone, mismatched amount, unverified and refunded paymen
     paid(f);
     if (variant === null) f.saved.status='unpaid';
     else if (!Object.keys(variant).length) f.payments=[];
-    else f.payments=[{id:'payment',report_id:f.saved.id,provider:'qpay',status:'paid',amount_mnt:6900,verified_at:new Date().toISOString(),provider_invoice_id:'invoice',...variant}];
+    else f.payments=[{id:'payment',report_id:f.saved.id,provider:'byl',status:'paid',amount_mnt:6900,verified_at:new Date().toISOString(),provider_invoice_id:'provider-invoice',...variant}];
     const res=response();await get(req,res);assert.equal(res.code,402);assert.equal(res.body.report,undefined);
   }
   assert.ok(!f.reads.some(u=>u.searchParams.get('select')==='report'));

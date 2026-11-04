@@ -1,0 +1,54 @@
+✔ default Byl handlers fail closed without an injected provider (4.732ms)
+✔ invoice creation fixes price and reference server-side; concurrent clicks reuse one hosted invoice (2.3812ms)
+✔ missing owner, cross-site requests and expired reports cannot create or check invoices (0.3904ms)
+✔ ambiguous create failure is not retried; no fake checkout or private upstream error is returned (0.3902ms)
+✔ retrieved paid invoice unlocks report only for its owner; client success never unlocks (1.416ms)
+✔ wrong amount, project, reference, invoice, currency or malformed provider response never unlocks (2.3089ms)
+✔ checkout allowlist rejects credential URLs, foreign hosts, query strings and wrong invoice paths (0.2825ms)
+✔ webhook requires exact raw-body HMAC and expected project; unsigned payloads cannot query provider (0.6807ms)
+✔ signed callback is only a hint; pending bank transfers do not grant access (0.5718ms)
+✔ concurrent duplicate webhook deliveries settle once; void revokes and stale paid cannot reopen (1.2832ms)
+✔ unknown invoices and failed verification return retryable errors without consuming an event (0.4237ms)
+✔ store adapter uses server-only RPCs and binds lookups to project and invoice (21.5812ms)
+✔ malformed truthy verification RPC results fail closed (0.9093ms)
+✔ HTTP server serves only browser assets and routes all paywall endpoints (57.0129ms)
+Report quality check failed [ 'Need 4 complete weeks' ]
+Analysis failed Error
+✔ creation stores full report and token hash; response is an explicit preview (17.5473ms)
+✔ missing, forged, cross-report cookies and malformed IDs cannot retrieve a paid report (2.758ms)
+✔ unpaid, paid flag alone, mismatched amount, unverified and refunded payments stay locked (4.1743ms)
+✔ verified paid report requires owner cookie; expired reports remain unavailable (1.1011ms)
+✔ database errors fail closed and do not disclose upstream details (0.7766ms)
+✔ payment endpoint never accepts browser supplied success or creates a fake invoice (0.7467ms)
+✔ analysis validates Gemini output, persists it, and returns no full report (2.6886ms)
+✔ analysis never delivers or persists an invalid report and never delivers on storage failure (2.2372ms)
+✔ recovery reauthenticates every request and returns only an allowlisted preview (4.3522ms)
+✔ storage preflight failure prevents Gemini spend (0.746ms)
+✔ substantial preview includes narrative, three photo observations, one action and at most one roast (2.8429ms)
+✔ deep allowlist excludes every paid section and additional priorities/roasts even with nested extra data (0.5586ms)
+✔ old previews recover safely without reading full reports or inventing personalized content (0.2807ms)
+✔ no roast is invented and object-valued fields cannot smuggle paid content (0.2682ms)
+✔ refresh and reopened page recover an unpaid preview without storing report contents (31.8474ms)
+✔ paid recovery fetches full report through the separately authorized report endpoint (14.8191ms)
+✔ expired or unauthorized recovery clears only the saved ID and displays no report (1.0334ms)
+✔ transient recovery errors preserve the ID for retry; malformed IDs never make requests (1.2226ms)
+✔ payment revocation between recovery and retrieval keeps the full report hidden (0.9418ms)
+✔ a newly created report remembers only its ID for the next refresh; restart forgets it (1.1401ms)
+✔ checkout redirects only to a validated Byl hosted invoice and never reveals the report (2.6365ms)
+✔ check-payment verifies server-side before separately requesting the authorized report (2.265ms)
+✔ valid complete report (1.4916ms)
+✔ reject overbudget and reference joke (0.5916ms)
+✔ reject underage/no consent (0.7069ms)
+✔ reject missing photos (0.2484ms)
+✔ static build never interpolates server credentials and publishes only browser assets (62.6343ms)
+✔ source/config templates contain no credential-shaped values or filled key assignments (12.4012ms)
+✔ staging runner rejects production, arbitrary origins and absent explicit opt-in before credentials (1.3418ms)
+✔ staging runner uses only explicitly named staging keys (0.2398ms)
+ℹ tests 44
+ℹ suites 0
+ℹ pass 44
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 181.6883
