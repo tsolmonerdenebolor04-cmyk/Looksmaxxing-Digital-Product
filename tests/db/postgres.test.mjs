@@ -82,7 +82,7 @@ test('a late migration failure rolls back all Byl tables and functions in a sepa
   await db.unsafe(`create database ${name}`);
   const isolated=postgres({host:'127.0.0.1',port:pgPort,database:name,username:'postgres',max:1,onnotice:()=>{}});
   try{
-    const schema=(await readFile(new URL('./schema.sql',import.meta.url),'utf8')).replace(/^create role .+;\r?$/gm,'');
+    const schema=(await readFile(process.env.BYL_TEST_SCHEMA_FILE||new URL('./schema.sql',import.meta.url),'utf8')).replace(/^create role .+;\r?$/gm,'');
     await isolated.unsafe(schema);
     const sql=(await readFile(new URL('../../docs/sql/byl-payments.sql',import.meta.url),'utf8')).replace('commit;','select 1/0;\ncommit;');
     await assert.rejects(isolated.unsafe(sql),error=>error.code==='22012');
@@ -180,7 +180,7 @@ test('concurrent paid/void transactions and delayed paid confirmations cannot re
 test('legacy QPay and unrelated paid Byl rows cannot bypass a revoked Byl order',async()=>{
   const f=await fixture();await store.settleByl({...f.value,status:'void'});
   for(const provider of ['qpay','byl'])await db`insert into payments(id,report_id,provider,provider_invoice_id,amount_mnt,status,verified_at)
-    values(${randomUUID()},${f.row.id},${provider},'unrelated',6900,'paid',now())`;
+    values(${randomUUID()},${f.row.id},${provider},${provider+'-unrelated-'+f.row.id},6900,'paid',now())`;
   await db`update reports set status='paid' where id=${f.row.id}`;
   assert.equal(await store.hasVerifiedPayment(f.row.id),false);assert.equal(await store.readPaidReport(f.row.id,f.row.access_token_hash),null);
   assert.equal((await invoke(reportHandler(()=>store),{...f.req,method:'GET',url:`/api/report?id=${f.row.id}`})).code,402);
@@ -189,7 +189,7 @@ test('ledger mismatches and post-preflight revocation cannot leak full JSON',asy
   const f=await fixture();await store.settleByl(f.value);
   await db`update payments set provider_invoice_id='wrong' where report_id=${f.row.id}`;
   assert.equal(await store.hasVerifiedPayment(f.row.id),false);
-  await db`update payments set provider_invoice_id=${f.id} where report_id=${f.row.id}`;
+  await db`update payments set provider_invoice_id=${'byl:1:'+f.id} where report_id=${f.row.id}`;
   assert.equal(await store.hasVerifiedPayment(f.row.id),true);
   await store.settleByl({...f.value,status:'void',eventId:String(++eventId)});
   // Even if a caller observed paid before revocation, final RPC rechecks the join.
@@ -284,4 +284,47 @@ test('failed reconciliation never frees the reservation or retries creation',asy
   const provider=createByl({projectId:1,signingSecret:'local',transport:async call=>{assert.equal(call.method,'GET');throw Error('404 or unavailable');}});
   await assert.rejects(reconcileByl(store,provider,f.row.id));
   assert.equal((await store.findBylOrder(f.row.id)).status,'creating');assert.equal((await store.reserveByl(f.row.id,f.row.access_token_hash,1)).created,false);
+});
+
+// Prepared after read-only staging compatibility review. These cases and the
+// revised schema/migration have NOT been executed; explicit approval is pending.
+test('namespaced ledger identifiers preserve the global invoice constraint without QPay or project collisions',async()=>{
+  const a=await fixture(),legacy=await fixture({bind:false}),b=await fixture({bind:false});
+  await db`insert into payments(id,report_id,provider,provider_invoice_id,amount_mnt,status,verified_at)
+    values(${randomUUID()},${legacy.row.id},'qpay',${a.id},6900,'paid',now())`;
+  await store.settleByl(a.value);
+  await store.reserveByl(b.row.id,b.row.access_token_hash,2);
+  await store.bindByl(b.row.id,a.id,2,a.url);
+  await store.settleByl({...b.value,invoiceId:a.id,projectId:2});
+  const rows=await db`select provider_invoice_id from payments where report_id in (${a.row.id},${b.row.id},${legacy.row.id}) order by provider_invoice_id`;
+  assert.deepEqual(rows.map(r=>r.provider_invoice_id).sort(),[a.id,'byl:1:'+a.id,'byl:2:'+a.id].sort());
+  assert.equal(await store.hasVerifiedPayment(a.row.id),true);assert.equal(await store.hasVerifiedPayment(b.row.id),true);
+  assert.equal(await store.hasVerifiedPayment(legacy.row.id),false);
+});
+test('a ledger-recorded refund stays revoked after duplicate and delayed paid confirmations',async()=>{
+  const f=await fixture();await store.settleByl(f.value);
+  await db`update payments set status='refunded' where report_id=${f.row.id}`;
+  assert.equal(await store.hasVerifiedPayment(f.row.id),false);
+  assert.equal((await store.settleByl(f.value)).status,'void');
+  assert.equal((await store.settleByl({...f.value,eventId:null})).status,'void');
+  assert.equal(await store.readPaidReport(f.row.id,f.row.access_token_hash),null);
+  const state=await snapshot(f);assert.equal(state.order.status,'void');assert.equal(state.payments[0].status,'refunded');
+});
+test('a report explicitly marked expired cannot be reopened by payment settlement',async()=>{
+  const f=await fixture();await db`update reports set status='expired' where id=${f.row.id}`;
+  await store.settleByl(f.value);
+  assert.equal((await snapshot(f)).report.status,'expired');
+  assert.equal(await store.readPaidReport(f.row.id,f.row.access_token_hash),null);
+  assert.equal((await invoke(reportHandler(()=>store),{...f.req,method:'GET',url:`/api/report?id=${f.row.id}`})).code,404);
+});
+test('service-role cleanup follows foreign keys, removes only exact run IDs and leaves unrelated rows',async()=>{
+  const f=await fixture(),sentinel=await fixture();await store.settleByl(f.value);
+  await db`insert into events(report_id,event_type) values(${f.row.id},'synthetic-cleanup')`;
+  await assert.rejects(db`delete from reports where id=${f.row.id}`);
+  for(const table of ['byl_events','byl_orders','events','payments']){
+    const r=await rest('/'+table+'?report_id=eq.'+f.row.id,undefined,'service_role','DELETE');assert.equal(r.status,204);
+  }
+  assert.equal((await rest('/reports?id=eq.'+f.row.id,undefined,'service_role','DELETE')).status,204);
+  assert.equal((await db`select count(*)::int as count from reports where id=${f.row.id}`)[0].count,0);
+  assert.equal((await db`select count(*)::int as count from reports where id=${sentinel.row.id}`)[0].count,1);
 });

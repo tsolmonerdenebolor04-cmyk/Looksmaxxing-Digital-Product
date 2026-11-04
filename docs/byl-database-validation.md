@@ -1,5 +1,7 @@
 # Review eff636b: isolated database validation
 
+Historical results for commit **59652f2**. A later [read-only staging review and migration plan](byl-staging-migration-plan.md) found additional constraints/default grants and prepared a revised SQL/fixture. The 23/23 results below do not validate that unapplied candidate; its 27 database checks await approval to run.
+
 Addresses [review comment 6633586441](https://github.com/tsolmonerdenebolor04-cmyk/Looksmaxxing-Digital-Product/pull/1#issuecomment-6633586441). Executed on 2026-11-04. Price remains **6,900 MNT**. Runtime activation remains disabled.
 
 ## Scope and reproduction

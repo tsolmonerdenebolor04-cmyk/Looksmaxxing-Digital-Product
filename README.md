@@ -60,6 +60,8 @@ The analysis endpoint now performs zero-row Supabase schema/read preflight check
 
 ## Byl integration boundary
 
+The latest [read-only staging compatibility review and migration/test plan](docs/byl-staging-migration-plan.md) identifies the actual global invoice constraint and prepares an unapplied correction. Approval is required before replaying or applying this candidate. Previous 23-test database results apply to commit 59652f2, not the revised 27-test fixture/candidate.
+
 The Byl invoice, hosted checkout, server verification and idempotent webhook implementation is tested with mocked provider responses. All default runtime handlers remain disabled; no live transport or environment switch exists. See [Byl implementation, activation gate and verification](docs/byl-integration.md). lib/qpay.mjs remains an unused legacy contract stub.
 
 ## Remaining launch considerations

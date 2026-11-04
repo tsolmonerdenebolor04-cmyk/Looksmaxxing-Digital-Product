@@ -1,7 +1,7 @@
 // Starts ONLY a fresh local cluster. Never accepts a database URL or loads .env.
 import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { join, resolve, isAbsolute } from 'node:path';
 import { execFile, spawn } from 'node:child_process';
 import { promisify } from 'node:util';
 import { createServer } from 'node:net';
@@ -9,6 +9,8 @@ import { randomBytes } from 'node:crypto';
 import postgres from 'postgres';
 
 const bin=process.env.BYL_TEST_PG_BIN, restBin=process.env.BYL_TEST_POSTGREST_BIN;
+const privateSchema=process.env.BYL_TEST_SCHEMA_FILE;
+if(privateSchema&&(!isAbsolute(privateSchema)||/^\\\\/.test(privateSchema)||!privateSchema.endsWith('.sql')))throw Error('Fixture override must be a local absolute SQL path');
 if (!bin || !restBin) throw Error('Set BYL_TEST_PG_BIN and BYL_TEST_POSTGREST_BIN to local portable test binaries');
 const exec=promisify(execFile), suffix=process.platform==='win32'?'.exe':'';
 const restEnv={...Object.fromEntries(Object.entries(process.env).filter(([key])=>key.toLowerCase()!=='path'&&!key.toUpperCase().startsWith('PGRST_'))),
@@ -30,7 +32,7 @@ try {
   admin=postgres({host:'127.0.0.1',port:pgPort,database:'postgres',username:'postgres',max:1});
   await admin.unsafe(`create database ${dbName}`);await admin.end();
   admin=postgres({host:'127.0.0.1',port:pgPort,database:dbName,username:'postgres',max:1});
-  await admin.unsafe(await readFile(new URL('../tests/db/schema.sql',import.meta.url),'utf8'));
+  await admin.unsafe(await readFile(privateSchema||new URL('../tests/db/schema.sql',import.meta.url),'utf8'));
   const [{version}]=await admin`select version()`;
   console.log(version);
   const jwtSecret=randomBytes(32).toString('hex');

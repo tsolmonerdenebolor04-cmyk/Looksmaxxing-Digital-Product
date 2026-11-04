@@ -1,5 +1,7 @@
 # Byl integration: mocked implementation, activation disabled
 
+Current status: [actual staging compatibility review and conditional migration plan](byl-staging-migration-plan.md) are ready. The revised migration/metadata-derived fixture have not been applied or replayed. Database results below describe the prior 59652f2 revision only; live activation remains disabled.
+
 This change keeps the product price at **6,900 MNT**. The merchant's project being LIVE does not authorize requests. No Byl API calls, real invoices, payments, remote database writes, deployment changes or production changes were made for this work.
 
 ## Implemented flow

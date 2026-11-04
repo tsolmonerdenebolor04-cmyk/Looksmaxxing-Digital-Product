@@ -1,5 +1,5 @@
--- REVIEW DRAFT ONLY. Not applied to staging or production by this change.
--- Run against a disposable database with the existing reports/payments schema first.
+-- STAGING CANDIDATE ONLY. Approval required before applying this revision anywhere.
+-- Reviewed against glowup-ai-staging metadata on 2026-11-04; no hosted changes applied.
 begin;
 create table public.byl_orders (
   report_id uuid primary key references public.reports(id),
@@ -58,33 +58,37 @@ end $$;
 
 create function public.settle_byl_invoice(p_report uuid,p_invoice text,p_project bigint,p_status text,p_amount integer,p_event text default null)
 returns jsonb language plpgsql security invoker set search_path='' as $$
-declare o public.byl_orders; final_status text;
+declare o public.byl_orders; final_status text; ledger_status text;
 begin
   perform 1 from public.reports where id=p_report for update;
   select * into strict o from public.byl_orders where report_id=p_report for update;
   if p_status is null or p_status not in ('paid','void') or p_amount is distinct from 6900
     or o.project_id is distinct from p_project or o.provider_invoice_id is distinct from p_invoice
     or o.provider_invoice_id is null then raise exception 'Invalid settlement'; end if;
+  select status into ledger_status from public.payments where id=o.payment_id for update;
+  -- A recorded refund is terminal even if an older provider read still says paid.
+  final_status := case when o.status='void' or ledger_status='refunded' then 'void' else p_status end;
   if p_event is not null then
     insert into public.byl_events(project_id,event_id,report_id) values(p_project,p_event,p_report)
       on conflict do nothing;
     if not found then
       if not exists(select 1 from public.byl_events where project_id=p_project and event_id=p_event and report_id=p_report)
         then raise exception 'Event replay across invoices'; end if;
-      return jsonb_build_object('duplicate',true,'status',o.status);
+      return jsonb_build_object('duplicate',true,'status',case when ledger_status='refunded' then 'void' else o.status end);
     end if;
   end if;
   -- Void is terminal: an older in-flight verification cannot restore revoked access.
-  final_status := case when o.status='void' then 'void' else p_status end;
   update public.byl_orders set status=final_status where report_id=p_report;
   insert into public.payments(id,report_id,provider,provider_invoice_id,amount_mnt,status,verified_at)
-    values(o.payment_id,p_report,'byl',p_invoice,6900,
+    -- Staging enforces global UNIQUE(provider_invoice_id). Preserve it and avoid
+    -- raw QPay/cross-project Byl collisions without changing existing rows.
+    values(o.payment_id,p_report,'byl','byl:'||p_project::text||':'||p_invoice,6900,
       case when final_status='paid' then 'paid' else 'refunded' end,now())
     on conflict(id) do update set status=excluded.status,verified_at=excluded.verified_at
     where payments.report_id=excluded.report_id and payments.provider=excluded.provider
       and payments.provider_invoice_id=excluded.provider_invoice_id and payments.amount_mnt=excluded.amount_mnt;
   if not found then raise exception 'Conflicting payment ledger'; end if;
-  update public.reports set status=case when final_status='paid' then 'paid' else 'unpaid' end,
+  update public.reports set status=case when status='expired' then 'expired' when final_status='paid' then 'paid' else 'unpaid' end,
     paid_at=case when final_status='paid' then coalesce(paid_at,now()) else null end where id=p_report;
   return jsonb_build_object('status',final_status);
 end $$;
@@ -94,7 +98,8 @@ end $$;
 create function public.has_verified_byl_payment(p_report uuid)
 returns boolean language sql stable security invoker set search_path='' as $$
   select exists(select 1 from public.byl_orders o join public.payments p
-    on p.id=o.payment_id and p.report_id=o.report_id and p.provider_invoice_id=o.provider_invoice_id
+    on p.id=o.payment_id and p.report_id=o.report_id
+      and p.provider_invoice_id='byl:'||o.project_id::text||':'||o.provider_invoice_id
     where o.report_id=p_report and o.status='paid' and o.amount_mnt=6900
       and o.provider_invoice_id is not null and p.provider='byl' and p.status='paid'
       and p.amount_mnt=6900 and p.verified_at is not null);
